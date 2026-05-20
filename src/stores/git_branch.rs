@@ -109,8 +109,8 @@ impl GitBranchStore {
     }
 
     async fn configure_identity(&self, dir: &Path) -> Result<()> {
-        run_git(dir, &["config", "user.email", "harness@invalid"]).await?;
-        run_git(dir, &["config", "user.name", "harness"]).await?;
+        run_git(dir, &["config", "user.email", "repossess@invalid"]).await?;
+        run_git(dir, &["config", "user.name", "repossess"]).await?;
         Ok(())
     }
 

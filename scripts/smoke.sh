@@ -17,11 +17,11 @@ require minio
 require cargo
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
-HARNESS_DIR="$REPO_ROOT/harness"
-cd "$HARNESS_DIR"
+REPOSSESS_DIR="$REPO_ROOT"
+cd "$REPOSSESS_DIR"
 
-MINIO_DATA="$(mktemp -d -t harness-smoke-XXXXXX)"
-MINIO_LOG="$(mktemp -t harness-smoke-XXXXXX.log)"
+MINIO_DATA="$(mktemp -d -t repossess-smoke-XXXXXX)"
+MINIO_LOG="$(mktemp -t repossess-smoke-XXXXXX.log)"
 
 cleanup() {
   if [[ -n "${MINIO_PID:-}" ]] && kill -0 "$MINIO_PID" 2>/dev/null; then
