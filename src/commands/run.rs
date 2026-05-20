@@ -135,7 +135,7 @@ async fn run_locked(
     tracing::info!("canary ok");
 
     // Workload extension point: this is where the actual job runs.
-    // Kept empty so the harness lifecycle (restore/save) can be exercised
+    // Kept empty so the repossess lifecycle (restore/save) can be exercised
     // independently of any specific automation; fill in here.
     tracing::info!("workload placeholder");
 

@@ -135,7 +135,7 @@ impl ChatGptClient {
         if !resp.status().is_success() {
             bail!(
                 "/api/auth/session returned {} — session may have expired; \
-                 re-run `harness seed`",
+                 re-run `repossess seed`",
                 resp.status().as_u16()
             );
         }
@@ -151,7 +151,7 @@ impl ChatGptClient {
             .ok_or_else(|| {
                 anyhow::anyhow!(
                     "no accessToken in session response — session may be invalid or expired; \
-                     re-run `harness seed`"
+                     re-run `repossess seed`"
                 )
             })?;
 
@@ -206,7 +206,7 @@ impl ChatGptClient {
 
             if status == StatusCode::UNAUTHORIZED {
                 bail!(
-                    "GET {url}: 401 — session expired; re-run `harness seed`"
+                    "GET {url}: 401 — session expired; re-run `repossess seed`"
                 );
             }
 

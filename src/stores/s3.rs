@@ -32,7 +32,7 @@ impl S3Store {
             creds.secret_key.expose_secret(),
             None,
             None,
-            "harness-config",
+            "repossess-config",
         );
 
         let cfg = aws_config::defaults(BehaviorVersion::latest())

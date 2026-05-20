@@ -99,7 +99,7 @@ impl Config {
             .with_context(|| format!("parse config {}", path.display()))?;
 
         // Resolve relative paths against the config file's directory so the
-        // harness can be invoked from any working directory.
+        // repossess can be invoked from any working directory.
         //
         // canonicalize() can only fail here if the file vanished between the
         // read above and now (TOCTOU) or on a permission/symlink anomaly.

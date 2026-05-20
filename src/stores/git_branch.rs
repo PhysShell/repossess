@@ -217,7 +217,7 @@ impl GitBranchStore {
 
 /// Run git with signing globally disabled.
 ///
-/// The harness writes to a dedicated state branch as machine automation;
+/// Repossess writes to a dedicated state branch as machine automation;
 /// commit/tag signing requires keys that are not available in CI runners and
 /// would gain us nothing (the state is already protected by our own
 /// ed25519 signature over the encrypted blob). Overriding here keeps the
@@ -278,7 +278,7 @@ impl SnapshotStore for GitBranchStore {
             .commit_and_push(
                 &dir,
                 &format!(
-                    "harness: {} {key}",
+                    "repossess: {} {key}",
                     if expected_etag.is_some() {
                         "update"
                     } else {
@@ -301,7 +301,7 @@ impl SnapshotStore for GitBranchStore {
         std::fs::write(&target, &body)?;
         let prev = self.current_sha(&dir).await?;
         let new_sha = self
-            .commit_and_push(&dir, &format!("harness: put {key}"), prev.as_deref())
+            .commit_and_push(&dir, &format!("repossess: put {key}"), prev.as_deref())
             .await?;
         Ok(PutResult { etag: new_sha })
     }
@@ -380,7 +380,7 @@ impl SnapshotStore for GitBranchStore {
         }
         run_git(&dir, &["rm", key]).await?;
         let _ = self
-            .commit_and_push(&dir, &format!("harness: delete {key}"), Some(&current))
+            .commit_and_push(&dir, &format!("repossess: delete {key}"), Some(&current))
             .await?;
         Ok(())
     }
