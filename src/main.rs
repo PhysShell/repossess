@@ -5,6 +5,7 @@ use rand::rngs::OsRng;
 use std::path::PathBuf;
 
 use repossess::config::Config;
+use repossess::env;
 
 #[derive(Parser)]
 #[command(name = "repossess", version)]
@@ -72,7 +73,7 @@ fn gen_keys(json: bool) -> Result<()> {
     } else {
         eprintln!("==> ed25519 keypair generated");
         eprintln!();
-        eprintln!("  Secret (→ REPOSSESS_SIGN_SECRET in GitHub Secrets):");
+        eprintln!("  Secret (→ {} in GitHub Secrets):", env::SIGN_SECRET);
         eprintln!("  {secret_hex}");
         eprintln!();
         eprintln!("  Public key (→ sign-pubkey.hex in repo, commit this):");

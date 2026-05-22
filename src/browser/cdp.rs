@@ -60,6 +60,7 @@ pub struct BrowserSession {
     browser: Browser,
     pump: JoinHandle<()>,
     user_data_dir: PathBuf,
+    browser_closed: bool,
 }
 
 impl BrowserSession {
@@ -99,6 +100,7 @@ impl BrowserSession {
             browser,
             pump,
             user_data_dir: user_data_dir.to_path_buf(),
+            browser_closed: false,
         })
     }
 
@@ -117,6 +119,87 @@ impl BrowserSession {
         .context("inject stealth script")?;
         page.goto(url).await.context("navigate")?;
         Ok(page)
+    }
+
+    /// Blocks until the user closes all browser pages, then captures cookies
+    /// from the still-live CDP session (Chrome fires `Target.targetDestroyed`
+    /// before it drops the WebSocket).
+    /// Blocks until the browser is closed by the user, capturing cookies along
+    /// the way. Strategy: refresh a cookie cache on every navigation/title
+    /// change event (`Target.targetInfoChanged`); fast-path snapshot when the
+    /// last page-target is destroyed (CDP still alive); fall back to the cache
+    /// when the event streams terminate (handler dropped = WebSocket dead).
+    pub async fn wait_and_capture(&mut self) -> Result<StorageState> {
+        use chromiumoxide::cdp::browser_protocol::target::{
+            EventTargetDestroyed, EventTargetInfoChanged, GetTargetsParams,
+        };
+
+        let mut destroyed = self
+            .browser
+            .event_listener::<EventTargetDestroyed>()
+            .await?;
+        let mut changed = self
+            .browser
+            .event_listener::<EventTargetInfoChanged>()
+            .await?;
+
+        let mut cache = self.export_storage_state().await.unwrap_or_default();
+        tracing::debug!(cookies = cache.cookies.len(), "initial cookie cache");
+
+        loop {
+            tokio::select! {
+                d = destroyed.next() => {
+                    match d {
+                        None => {
+                            tracing::debug!("destroyed stream ended");
+                            break;
+                        }
+                        Some(_) => {
+                            let pages = match self.browser.execute(GetTargetsParams::default()).await {
+                                Ok(resp) => resp.result.target_infos.iter()
+                                    .filter(|t| t.r#type == "page").count(),
+                                Err(e) => {
+                                    tracing::debug!(error = %e, "Target.getTargets failed; assuming closed");
+                                    break;
+                                }
+                            };
+                            tracing::debug!(remaining_pages = pages, "target destroyed");
+                            if pages == 0 {
+                                self.browser_closed = true;
+                                if let Ok(state) = self.export_storage_state().await {
+                                    if !state.cookies.is_empty() {
+                                        return Ok(state);
+                                    }
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+                c = changed.next() => {
+                    match c {
+                        None => {
+                            tracing::debug!("changed stream ended");
+                            break;
+                        }
+                        Some(_) => {
+                            if let Ok(state) = self.export_storage_state().await {
+                                if !state.cookies.is_empty() {
+                                    tracing::debug!(cookies = state.cookies.len(), "cache refresh");
+                                    cache = state;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        self.browser_closed = true;
+        if cache.cookies.is_empty() {
+            anyhow::bail!("browser closed before any cookies were captured");
+        }
+        Ok(cache)
     }
 
     pub async fn export_storage_state(&self) -> Result<StorageState> {
@@ -200,7 +283,9 @@ impl BrowserSession {
     }
 
     pub async fn close(mut self) -> Result<()> {
-        let _ = self.browser.close().await;
+        if !self.browser_closed {
+            let _ = self.browser.close().await;
+        }
         let _ = self.browser.wait().await;
         self.pump.abort();
         let _ = self.pump.await;

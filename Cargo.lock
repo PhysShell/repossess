@@ -1870,42 +1870,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "harness"
-version = "0.1.0"
-dependencies = [
- "age",
- "anyhow",
- "async-trait",
- "aws-config",
- "aws-credential-types",
- "aws-sdk-s3",
- "bytes",
- "chromiumoxide",
- "chrono",
- "clap",
- "ed25519-dalek",
- "futures",
- "hex",
- "rand 0.8.6",
- "reqwest",
- "secrecy",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "tar",
- "tempfile",
- "tokio",
- "toml 0.8.23",
- "tracing",
- "tracing-subscriber",
- "url",
- "urlencoding",
- "wiremock",
- "zeroize",
- "zstd",
-]
-
-[[package]]
 name = "hashbrown"
 version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3032,6 +2996,42 @@ name = "regex-syntax"
 version = "0.8.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
+
+[[package]]
+name = "repossess"
+version = "0.1.0"
+dependencies = [
+ "age",
+ "anyhow",
+ "async-trait",
+ "aws-config",
+ "aws-credential-types",
+ "aws-sdk-s3",
+ "bytes",
+ "chromiumoxide",
+ "chrono",
+ "clap",
+ "ed25519-dalek",
+ "futures",
+ "hex",
+ "rand 0.8.6",
+ "reqwest",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tar",
+ "tempfile",
+ "tokio",
+ "toml 0.8.23",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+ "urlencoding",
+ "wiremock",
+ "zeroize",
+ "zstd",
+]
 
 [[package]]
 name = "reqwest"

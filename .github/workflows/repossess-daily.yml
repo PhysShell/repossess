@@ -46,12 +46,12 @@ jobs:
           sudo apt-get install -y -q google-chrome-stable
           echo "CHROMIUM_BIN=$(which google-chrome-stable)" >> "$GITHUB_ENV"
 
-      - name: Write config
-        env:
-          REPOSSESS_R2_ENDPOINT:           ${{ secrets.REPOSSESS_R2_ENDPOINT }}
-          REPOSSESS_R2_BUCKET:             ${{ secrets.REPOSSESS_R2_BUCKET }}
-          REPOSSESS_CANARY_EXPECTED_VALUE: ${{ secrets.REPOSSESS_CANARY_EXPECTED_VALUE }}
-        run: envsubst < config-prod.toml > config.toml
+      # - name: Write config
+      #   env:
+      #     REPOSSESS_R2_ENDPOINT:           ${{ secrets.REPOSSESS_R2_ENDPOINT }}
+      #     REPOSSESS_R2_BUCKET:             ${{ secrets.REPOSSESS_R2_BUCKET }}
+      #     REPOSSESS_CANARY_EXPECTED_VALUE: ${{ secrets.REPOSSESS_CANARY_EXPECTED_VALUE }}
+      #   run: envsubst < config.ci.toml > config.toml
 
 
       - name: Run repossess
@@ -62,6 +62,7 @@ jobs:
           REPOSSESS_R2_SECRET_KEY: ${{ secrets.REPOSSESS_R2_SECRET_KEY }}
           REPOSSESS_R2_ENDPOINT:   ${{ secrets.REPOSSESS_R2_ENDPOINT }}
           REPOSSESS_R2_BUCKET:     ${{ secrets.REPOSSESS_R2_BUCKET }}
+          REPOSSESS_CANARY_EXPECTED_VALUE: ${{ secrets.REPOSSESS_CANARY_EXPECTED_VALUE }}
           RUST_LOG: repossess=info
         run: |
           set +x

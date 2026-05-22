@@ -1,5 +1,5 @@
 {
-  description = "Encrypted browser-state checkpoint repossess";
+  description = "Encrypted browser-state checkpoint project 'repossess' dev environment";
 
   inputs = {
     # TODO: bump to nixos-25.11 — crane emits a warning that it requires ≥25.11.

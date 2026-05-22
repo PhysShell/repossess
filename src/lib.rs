@@ -1,5 +1,6 @@
 pub mod archive;
 pub mod browser;
+pub mod env;
 pub mod commands;
 pub mod config;
 pub mod crypto;

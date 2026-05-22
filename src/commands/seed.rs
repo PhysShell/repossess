@@ -6,13 +6,14 @@ use crate::archive;
 use crate::browser::cdp::BrowserSession;
 use crate::config::Config;
 use crate::crypto::{encrypt, sign};
+use crate::env;
 use crate::secrets::MinisignKey;
 use crate::snapshot::{sha256_hex, LatestPointer, SnapshotFormat, LATEST_KEY};
 use crate::stores;
 
 pub async fn run(cfg: &Config) -> Result<()> {
     let recipient = encrypt::read_recipient(&cfg.crypto.recipient_file)?;
-    let signing_key_raw = MinisignKey::take_from_env("REPOSSESS_SIGN_SECRET")?;
+    let signing_key_raw = MinisignKey::take_from_env(env::SIGN_SECRET)?;
     let signing_key = sign::parse_signing_key(signing_key_raw.expose())?;
 
     let primary = stores::build_store(cfg.primary()).await?;
@@ -27,22 +28,19 @@ pub async fn run(cfg: &Config) -> Result<()> {
     }
 
     tracing::info!(url = %cfg.seed.login_url, "launching headed browser");
-    let session =
+    let mut session =
         BrowserSession::launch(&cfg.browser.chromium_bin, &cfg.browser.user_data_dir, false)
             .await?;
     let _page = session.open(&cfg.seed.login_url).await?;
 
     eprintln!();
-    eprintln!("  Browser is open. Log in, then press Enter here to snapshot.");
-    eprintln!("  (All tabs are captured — you can navigate freely before pressing Enter.)");
+    eprintln!("  Browser is open. Log in, then close the browser to snapshot.");
+    eprintln!("  (All tabs are captured — navigate freely before closing.)");
     eprintln!();
-    let mut _line = String::new();
-    std::io::stdin()
-        .read_line(&mut _line)
-        .context("read Enter from stdin")?;
 
+    tracing::info!("waiting for browser close");
+    let state = session.wait_and_capture().await?;
     tracing::info!("snapshotting browser cookies");
-    let state = session.export_storage_state().await?;
     session.close().await?;
 
     if state.cookies.is_empty() {

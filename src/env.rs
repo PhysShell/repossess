@@ -1,0 +1,3 @@
+pub const CONFIG: &str = "REPOSSESS_CONFIG";
+pub const AGE_IDENTITY: &str = "REPOSSESS_AGE_IDENTITY";
+pub const SIGN_SECRET: &str = "REPOSSESS_SIGN_SECRET";

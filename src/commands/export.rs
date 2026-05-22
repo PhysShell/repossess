@@ -6,6 +6,7 @@ use crate::archive;
 use crate::browser::cdp;
 use crate::config::Config;
 use crate::crypto::{encrypt, sign};
+use crate::env;
 use crate::secrets::AgeIdentity;
 use crate::snapshot::{verify_digest, LatestPointer, LATEST_KEY};
 use crate::stores;
@@ -13,7 +14,7 @@ use crate::workload::chatgpt::ChatGptClient;
 
 pub async fn run(cfg: &Config) -> Result<()> {
     // ── 1. Restore snapshot (same path as verify) ─────────────────────────
-    let identity = AgeIdentity::take_from_env("REPOSSESS_AGE_IDENTITY")?.parse()?;
+    let identity = AgeIdentity::take_from_env(env::AGE_IDENTITY)?.parse()?;
     let verify_pubkey_hex =
         std::fs::read_to_string(&cfg.crypto.verify_pubkey_file).with_context(|| {
             format!(
