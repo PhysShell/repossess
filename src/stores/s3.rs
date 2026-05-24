@@ -13,6 +13,8 @@ use crate::secrets::StoreCredential;
 
 pub struct S3Store {
     name: String,
+    endpoint: String,
+    region: String,
     bucket: String,
     prefix: String,
     client: Client,
@@ -50,6 +52,8 @@ impl S3Store {
 
         Ok(Self {
             name,
+            endpoint,
+            region,
             bucket,
             prefix,
             client,
@@ -85,54 +89,80 @@ impl SnapshotStore for S3Store {
             None => req.if_none_match("*"),
         };
 
-        let out = req.send().await.context("s3 put_if_unmodified")?;
+        let full_key = self.full_key(key);
+        let out = req.send().await.with_context(|| {
+            format!(
+                "s3 put_if_unmodified failed (store={}, endpoint={}, region={}, bucket={}, key={}, expected_etag={:?})",
+                self.name, self.endpoint, self.region, self.bucket, full_key, expected_etag
+            )
+        })?;
         Ok(PutResult {
             etag: out.e_tag().unwrap_or_default().to_string(),
         })
     }
 
     async fn put(&self, key: &str, body: Bytes) -> Result<PutResult> {
+        let full_key = self.full_key(key);
         let out = self
             .client
             .put_object()
             .bucket(&self.bucket)
-            .key(self.full_key(key))
+            .key(&full_key)
             .body(ByteStream::from(body))
             .send()
             .await
-            .context("s3 put")?;
+            .with_context(|| {
+                format!(
+                    "s3 put failed (store={}, endpoint={}, region={}, bucket={}, key={})",
+                    self.name, self.endpoint, self.region, self.bucket, full_key
+                )
+            })?;
         Ok(PutResult {
             etag: out.e_tag().unwrap_or_default().to_string(),
         })
     }
 
     async fn get(&self, key: &str) -> Result<(Bytes, String)> {
+        let full_key = self.full_key(key);
         let out = self
             .client
             .get_object()
             .bucket(&self.bucket)
-            .key(self.full_key(key))
+            .key(&full_key)
             .send()
             .await
-            .context("s3 get")?;
+            .with_context(|| {
+                format!(
+                    "s3 get failed (store={}, endpoint={}, region={}, bucket={}, key={})",
+                    self.name, self.endpoint, self.region, self.bucket, full_key
+                )
+            })?;
         let etag = out.e_tag().unwrap_or_default().to_string();
         let body = out.body.collect().await?.into_bytes();
         Ok((body, etag))
     }
 
     async fn head(&self, key: &str) -> Result<Option<String>> {
+        let full_key = self.full_key(key);
         let res = self
             .client
             .head_object()
             .bucket(&self.bucket)
-            .key(self.full_key(key))
+            .key(&full_key)
             .send()
             .await;
         match res {
             Ok(out) => Ok(Some(out.e_tag().unwrap_or_default().to_string())),
             Err(e) => match e.into_service_error() {
                 aws_sdk_s3::operation::head_object::HeadObjectError::NotFound(_) => Ok(None),
-                other => Err(anyhow::anyhow!("s3 head: {other:?}")),
+                other => Err(anyhow::anyhow!(
+                    "s3 head failed (store={}, endpoint={}, region={}, bucket={}, key={}): {other:?}",
+                    self.name,
+                    self.endpoint,
+                    self.region,
+                    self.bucket,
+                    full_key
+                )),
             },
         }
     }
@@ -146,7 +176,12 @@ impl SnapshotStore for S3Store {
             .prefix(full)
             .send()
             .await
-            .context("s3 list")?;
+            .with_context(|| {
+                format!(
+                    "s3 list failed (store={}, endpoint={}, region={}, bucket={}, prefix={}{})",
+                    self.name, self.endpoint, self.region, self.bucket, self.prefix, prefix
+                )
+            })?;
 
         Ok(out
             .contents()
@@ -163,14 +198,20 @@ impl SnapshotStore for S3Store {
         // R2 and recent MinIO honour If-Match on DeleteObject. Older S3-compat
         // backends may ignore the precondition silently — that's a backend
         // bug, not ours; the lock TTL still provides a safety net.
+        let full_key = self.full_key(key);
         self.client
             .delete_object()
             .bucket(&self.bucket)
-            .key(self.full_key(key))
+            .key(&full_key)
             .if_match(etag)
             .send()
             .await
-            .context("s3 delete")?;
+            .with_context(|| {
+                format!(
+                    "s3 delete failed (store={}, endpoint={}, region={}, bucket={}, key={}, etag={})",
+                    self.name, self.endpoint, self.region, self.bucket, full_key, etag
+                )
+            })?;
         Ok(())
     }
 }

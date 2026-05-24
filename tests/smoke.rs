@@ -13,6 +13,7 @@
 use bytes::Bytes;
 use rand::rngs::OsRng;
 use secrecy::SecretString;
+use tokio::time::{timeout, Duration};
 
 use repossess::archive;
 use repossess::browser::canary;
@@ -207,6 +208,75 @@ async fn full_cycle_with_chromium() {
     assert!(
         result.ok,
         "canary should pass with imported cookie: {result:?}"
+    );
+}
+
+#[tokio::test]
+async fn wait_and_capture_does_not_hang_after_last_page_closes() {
+    let Some(chromium_bin) = std::env::var("CHROMIUM_BIN").ok() else {
+        eprintln!("[skip] CHROMIUM_BIN not set");
+        return;
+    };
+
+    let temp = tempfile::tempdir().unwrap();
+    let mut session =
+        BrowserSession::launch(std::path::Path::new(&chromium_bin), temp.path(), true)
+            .await
+            .expect("chromium launch");
+
+    let page = session.open("about:blank").await.expect("open page");
+    page.close().await.expect("close page");
+
+    let result = timeout(Duration::from_secs(10), session.wait_and_capture()).await;
+    assert!(
+        result.is_ok(),
+        "wait_and_capture timed out after page close; likely hang"
+    );
+
+    // In this flow we did not authenticate anywhere, so empty-cookie error is expected.
+    let capture = result.unwrap();
+    assert!(
+        capture.is_err(),
+        "expected no-cookie error for blank page flow, got: {capture:?}"
+    );
+
+    session.close().await.ok();
+}
+
+#[tokio::test]
+async fn s3_errors_include_detailed_context() {
+    let creds = StoreCredential {
+        access_key: SecretString::from("test-access"),
+        secret_key: SecretString::from("test-secret"),
+    };
+    let store = S3Store::new(
+        "diag-store".into(),
+        "http://127.0.0.1:9".into(),
+        "us-east-1".into(),
+        "diag-bucket".into(),
+        "diag-prefix/".into(),
+        creds,
+    )
+    .await
+    .expect("s3 store creation should not require a live endpoint");
+
+    let err = store
+        .put("diag-key.txt", Bytes::from_static(b"payload"))
+        .await
+        .expect_err("put against closed local port should fail");
+
+    let msg = format!("{err:#}");
+    assert!(msg.contains("s3 put failed"), "missing op marker: {msg}");
+    assert!(msg.contains("store=diag-store"), "missing store: {msg}");
+    assert!(
+        msg.contains("endpoint=http://127.0.0.1:9"),
+        "missing endpoint: {msg}"
+    );
+    assert!(msg.contains("region=us-east-1"), "missing region: {msg}");
+    assert!(msg.contains("bucket=diag-bucket"), "missing bucket: {msg}");
+    assert!(
+        msg.contains("key=diag-prefix/diag-key.txt"),
+        "missing full key: {msg}"
     );
 }
 
