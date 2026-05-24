@@ -18,6 +18,7 @@ use repossess::archive;
 use repossess::browser::canary;
 use repossess::browser::cdp::{cookies_to_reqwest_jar, BrowserSession, StorageState, StoredCookie};
 use repossess::crypto::{encrypt, sign};
+use repossess::lock;
 use repossess::secrets::StoreCredential;
 use repossess::stores::git_branch::GitBranchStore;
 use repossess::stores::s3::S3Store;
@@ -295,6 +296,179 @@ async fn git_branch_cas_semantics() {
 
     let missing = store.head("never-written.json").await.unwrap();
     assert!(missing.is_none());
+}
+
+fn bare_git_store(name: &str) -> (tempfile::TempDir, GitBranchStore) {
+    let upstream = tempfile::tempdir().unwrap();
+    std::process::Command::new("git")
+        .args(["init", "--bare", "--initial-branch=state"])
+        .current_dir(upstream.path())
+        .output()
+        .unwrap();
+    let url = format!("file://{}", upstream.path().display());
+    let store = GitBranchStore::new(
+        name.into(),
+        url,
+        "state".into(),
+        SecretString::from("ignored-for-file-url"),
+    )
+    .unwrap();
+    (upstream, store)
+}
+
+#[tokio::test]
+async fn lock_acquire_and_release() {
+    if std::process::Command::new("git")
+        .arg("--version")
+        .output()
+        .is_err()
+    {
+        eprintln!("[skip] git not on PATH");
+        return;
+    }
+
+    let (_dir, store) = bare_git_store("lock-basic");
+
+    let guard = lock::acquire(&store, "run-1".into(), std::time::Duration::from_secs(60))
+        .await
+        .expect("should acquire lock on empty store");
+
+    guard.release().await.expect("should release without error");
+
+    // Re-acquire succeeds after release.
+    let guard2 = lock::acquire(&store, "run-2".into(), std::time::Duration::from_secs(60))
+        .await
+        .expect("should re-acquire after release");
+    guard2.release().await.unwrap();
+}
+
+#[tokio::test]
+async fn lock_blocks_while_held() {
+    if std::process::Command::new("git")
+        .arg("--version")
+        .output()
+        .is_err()
+    {
+        eprintln!("[skip] git not on PATH");
+        return;
+    }
+
+    let (_dir, store) = bare_git_store("lock-contend");
+
+    let guard = lock::acquire(&store, "run-holder".into(), std::time::Duration::from_secs(60))
+        .await
+        .unwrap();
+
+    let result = lock::acquire(&store, "run-waiter".into(), std::time::Duration::from_secs(60))
+        .await;
+
+    match result {
+        Ok(_) => panic!("second acquire should have been blocked"),
+        Err(e) => assert!(
+            e.to_string().contains("run-holder"),
+            "error should name the lock holder: {e}"
+        ),
+    }
+
+    guard.release().await.unwrap();
+}
+
+#[tokio::test]
+async fn lock_reclaims_expired() {
+    if std::process::Command::new("git")
+        .arg("--version")
+        .output()
+        .is_err()
+    {
+        eprintln!("[skip] git not on PATH");
+        return;
+    }
+
+    let (_dir, store) = bare_git_store("lock-expire");
+
+    // Acquire with a 1ns TTL so it's stale the moment we try again.
+    let stale = lock::acquire(&store, "crashed-run".into(), std::time::Duration::from_nanos(1))
+        .await
+        .unwrap();
+    // Intentionally drop without releasing, simulating a crashed runner.
+    drop(stale);
+
+    // Acquiring after the TTL has elapsed must succeed via CAS overwrite.
+    let guard = lock::acquire(&store, "recovery-run".into(), std::time::Duration::from_secs(60))
+        .await
+        .expect("should reclaim expired lock");
+    guard.release().await.unwrap();
+}
+
+#[tokio::test]
+async fn git_branch_unconditional_put_and_list() {
+    if std::process::Command::new("git")
+        .arg("--version")
+        .output()
+        .is_err()
+    {
+        eprintln!("[skip] git not on PATH");
+        return;
+    }
+
+    let (_dir, store) = bare_git_store("git-ops");
+
+    // Unconditional put (used for health records and fanout mirrors).
+    store
+        .put("health/run-1.json", Bytes::from_static(b"{}"))
+        .await
+        .expect("unconditional put should succeed");
+    store
+        .put("health/run-2.json", Bytes::from_static(b"{}"))
+        .await
+        .expect("unconditional put should succeed on second call");
+
+    let objects = store.list("health/").await.expect("list should succeed");
+    assert_eq!(objects.len(), 2, "both health records should be listed");
+    let keys: Vec<&str> = objects.iter().map(|o| o.key.as_str()).collect();
+    assert!(keys.contains(&"health/run-1.json"), "{keys:?}");
+    assert!(keys.contains(&"health/run-2.json"), "{keys:?}");
+
+    // Listing a prefix that matches nothing returns an empty vec.
+    let empty = store.list("snapshots/").await.unwrap();
+    assert!(empty.is_empty());
+}
+
+#[tokio::test]
+async fn git_branch_delete_if_match() {
+    if std::process::Command::new("git")
+        .arg("--version")
+        .output()
+        .is_err()
+    {
+        eprintln!("[skip] git not on PATH");
+        return;
+    }
+
+    let (_dir, store) = bare_git_store("git-delete");
+
+    let result = store
+        .put_if_unmodified("lock.json", Bytes::from_static(b"lock"), None)
+        .await
+        .unwrap();
+
+    // Delete with wrong etag must fail.
+    assert!(
+        store.delete_if_match("lock.json", "wrong-etag").await.is_err(),
+        "delete with stale etag should fail"
+    );
+
+    // Object still present after failed delete.
+    assert!(store.head("lock.json").await.unwrap().is_some());
+
+    // Delete with correct etag succeeds.
+    store
+        .delete_if_match("lock.json", &result.etag)
+        .await
+        .expect("delete with correct etag should succeed");
+
+    // Object gone.
+    assert!(store.head("lock.json").await.unwrap().is_none());
 }
 
 async fn create_bucket(endpoint: &str, ak: &str, sk: &str, bucket: &str) {

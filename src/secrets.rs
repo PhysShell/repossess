@@ -59,3 +59,60 @@ impl StoreCredential {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use secrecy::ExposeSecret;
+
+    #[test]
+    fn age_identity_parses_bare_key() {
+        let identity = age::x25519::Identity::generate();
+        // to_string() returns SecretBox<str> when the secrecy feature is active.
+        let key_str = identity.to_string();
+        let var = "TEST_AGE_BARE_52A1C3";
+        std::env::set_var(var, key_str.expose_secret());
+        let ai = AgeIdentity::take_from_env(var).unwrap();
+        assert!(std::env::var(var).is_err(), "env var must be removed after take");
+        ai.parse().expect("bare key should parse");
+    }
+
+    #[test]
+    fn age_identity_parses_keygen_multiline_format() {
+        let identity = age::x25519::Identity::generate();
+        let key_str = identity.to_string();
+        // Simulate the output of `age-keygen`: comment header lines + key line.
+        let multiline = format!(
+            "# created: 2024-01-01T00:00:00Z\n# public key: {}\n{}",
+            identity.to_public(),
+            key_str.expose_secret()
+        );
+        let var = "TEST_AGE_MULTILINE_52A1C3";
+        std::env::set_var(var, &multiline);
+        let ai = AgeIdentity::take_from_env(var).unwrap();
+        assert!(std::env::var(var).is_err());
+        ai.parse().expect("keygen multiline format should parse");
+    }
+
+    #[test]
+    fn age_identity_missing_env_var_errors() {
+        let result = AgeIdentity::take_from_env("TEST_AGE_MISSING_XYZZY_99B2D4");
+        // Use .err() to avoid requiring AgeIdentity: Debug.
+        let err = result.err().expect("should have returned Err");
+        assert!(
+            err.to_string().contains("TEST_AGE_MISSING_XYZZY_99B2D4"),
+            "error should name the missing var: {err}"
+        );
+    }
+
+    #[test]
+    fn store_credential_clears_env_vars() {
+        std::env::set_var("TEST_AK_F7E3A1", "myaccesskey");
+        std::env::set_var("TEST_SK_F7E3A1", "mysecretkey");
+        let cred = StoreCredential::take_from_env("TEST_AK_F7E3A1", "TEST_SK_F7E3A1").unwrap();
+        assert!(std::env::var("TEST_AK_F7E3A1").is_err(), "access key var must be cleared");
+        assert!(std::env::var("TEST_SK_F7E3A1").is_err(), "secret key var must be cleared");
+        assert_eq!(cred.access_key.expose_secret(), "myaccesskey");
+        assert_eq!(cred.secret_key.expose_secret(), "mysecretkey");
+    }
+}
