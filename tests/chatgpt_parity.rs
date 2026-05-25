@@ -32,10 +32,9 @@ fn fixtures_dir() -> PathBuf {
 /// for deserializing into `ConversationDetail`.
 ///
 /// Two shapes are accepted because both occur in the wild:
-///   * `{...}`        — what the API detail endpoint returns
-///   * `[{...}]`      — what the official export emits (a 1-element batch is
-///                      a common slice produced by hand from a larger
-///                      `conversations-NNN.json`)
+///   * `{...}`   — what the API detail endpoint returns
+///   * `[{...}]` — what the official export emits (a 1-element batch is a
+///     common slice produced by hand from a larger `conversations-NNN.json`)
 ///
 /// Then the archive's known quirk is fixed: the export records BOTH
 /// `id` and `conversation_id` at the root, and `ConversationDetail`'s

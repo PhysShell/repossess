@@ -532,7 +532,9 @@ of crawling the API for 2000+ conversations on day one:
 
 ```sh
 repossess import-chatgpt --from /path/to/unpacked/export
-# or, to count without writing:
+# tune in-flight uploads (default 8; no API rate limit to respect here):
+repossess import-chatgpt --from /path/to/unpacked/export --concurrency 16
+# count without writing:
 repossess import-chatgpt --from /path/to/unpacked/export --dry-run
 ```
 
@@ -540,6 +542,9 @@ The command looks for `conversations*.json` batches in the directory,
 encodes each conversation with the same path the workload uses, and writes
 a single CAS-protected index at the end. Re-running is idempotent:
 conversations whose `update_time` already matches the index are skipped.
+A single failed upload is logged + counted but does not abort the run —
+the index still gets saved with whatever succeeded, and re-running picks
+up only the failures.
 
 ### 401 and rate-limit handling
 

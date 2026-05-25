@@ -88,4 +88,43 @@ token_env = "GITHUB_TOKEN"
 # branch = "agent-state"
 # token_env = "GITHUB_TOKEN"
 
-# For workloads see README.md
+# ── Workloads ────────────────────────────────────────────────────────────────
+#
+# Workloads are the daily jobs `run` performs after the session is restored
+# and the canary passes. Uncomment a block to enable one. With no blocks,
+# `run` is a pure session-refresh cycle.
+#
+# See the "Workloads: ChatGPT chats" section of README.md for the full
+# explanation of what each knob does, the storage layout produced, and the
+# `repossess import-chatgpt --from <dir>` bootstrap flow.
+
+# [[workloads]]
+# kind = "chatgpt_chats"
+# name = "chats"
+# prefix = "chatgpt/"                     # → chatgpt/index.json.age + chatgpt/conv/<id>.json.zst.age
+#
+# # URLs (override only if ChatGPT moves the API).
+# # base_url = "https://chatgpt.com"
+# # session_path = "/api/auth/session"
+# # list_path = "/backend-api/conversations"
+# # detail_path_template = "/backend-api/conversation/{id}"
+#
+# # Pagination + early-stop. After N consecutive list items already match our
+# # index we stop paginating — that's the "caught up with last run" signal.
+# # list_page_limit = 28
+# # incremental_stop_after_known = 50
+#
+# # Rate limits — defaults track the JS exporter's `rate_limit.js`. For
+# # incremental daily runs (few new chats) the batch cooldown and retry sweep
+# # rarely fire; they exist for the import + first-run-after-long-pause cases.
+# # list_delay_ms = 1200
+# # detail_delay_ms = 4000
+# # detail_batch_size = 75
+# # detail_batch_cooldown_ms = 45000
+# # retry_sweep_cooldown_ms = 600000
+# # max_backoff_ms = 900000
+# # max_retries = 5
+#
+# # zstd compression level for per-conversation bodies. 19 is the boundary
+# # above which long-distance matching kicks in by default.
+# # zstd_level = 19

@@ -39,6 +39,10 @@ enum Cmd {
         /// Directory containing `conversations-NNN.json` batches.
         #[arg(long)]
         from: PathBuf,
+        /// How many uploads to keep in flight at once. Bound by your object
+        /// store, not by any API rate limit (import doesn't touch ChatGPT).
+        #[arg(long, default_value_t = 8)]
+        concurrency: usize,
         /// Parse + classify but don't write anything to the store.
         #[arg(long, default_value_t = false)]
         dry_run: bool,
@@ -68,9 +72,18 @@ async fn main() -> Result<()> {
         Cmd::Run => repossess::commands::run::run(&Config::load(&cli.config)?).await,
         Cmd::Verify => repossess::commands::verify::run(&Config::load(&cli.config)?).await,
         Cmd::Export => repossess::commands::export::run(&Config::load(&cli.config)?).await,
-        Cmd::ImportChatgpt { from, dry_run } => {
-            repossess::commands::import_chatgpt::run(&Config::load(&cli.config)?, &from, dry_run)
-                .await
+        Cmd::ImportChatgpt {
+            from,
+            concurrency,
+            dry_run,
+        } => {
+            repossess::commands::import_chatgpt::run(
+                &Config::load(&cli.config)?,
+                &from,
+                concurrency,
+                dry_run,
+            )
+            .await
         }
     }
 }
