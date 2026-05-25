@@ -189,3 +189,167 @@ fn default_chatgpt_base_url() -> String { "https://chatgpt.com".into() }
 fn default_rate_limit_delay_ms() -> u64 { 2000 }
 fn default_max_retries() -> u32 { 5 }
 fn default_export_prefix() -> String { "exports/".into() }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+
+    fn write_config(content: &str) -> NamedTempFile {
+        let mut f = NamedTempFile::new().unwrap();
+        f.write_all(content.as_bytes()).unwrap();
+        f
+    }
+
+    fn config_with_stores(stores_toml: &str) -> String {
+        format!(
+            r#"
+[browser]
+chromium_bin = "/usr/bin/chromium"
+user_data_dir = "/tmp/ud"
+
+[seed]
+login_url = "https://example.com/login"
+
+[canary]
+url = "https://example.com/api/me"
+expected_status = 200
+field = "/user/id"
+expected_value = "me"
+
+[crypto]
+recipient_file = "/tmp/age-recipient.txt"
+verify_pubkey_file = "/tmp/sign-pubkey.hex"
+
+[lock]
+ttl_seconds = 300
+
+{stores_toml}
+"#
+        )
+    }
+
+    const ONE_STORE: &str = r#"[[stores]]
+kind = "git_branch"
+name = "primary"
+repo_url = "https://github.com/example/repo"
+branch = "state"
+token_env = "GH_TOKEN"
+"#;
+
+    #[test]
+    fn valid_config_loads() {
+        let f = write_config(&config_with_stores(ONE_STORE));
+        let cfg = Config::load(f.path()).unwrap();
+        assert_eq!(cfg.primary().name(), "primary");
+        assert_eq!(cfg.mirrors().len(), 0);
+        assert_eq!(cfg.lock.ttl_seconds, 300);
+        assert!(cfg.browser.headless);
+    }
+
+    #[test]
+    fn multiple_stores_separates_primary_and_mirrors() {
+        let stores = r#"[[stores]]
+kind = "git_branch"
+name = "primary"
+repo_url = "https://github.com/example/repo"
+branch = "state"
+token_env = "GH_TOKEN"
+
+[[stores]]
+kind = "git_branch"
+name = "mirror1"
+repo_url = "https://github.com/example/mirror"
+branch = "state"
+token_env = "GH_MIRROR_TOKEN"
+"#;
+        let f = write_config(&config_with_stores(stores));
+        let cfg = Config::load(f.path()).unwrap();
+        assert_eq!(cfg.primary().name(), "primary");
+        assert_eq!(cfg.mirrors().len(), 1);
+        assert_eq!(cfg.mirrors()[0].name(), "mirror1");
+    }
+
+    #[test]
+    fn empty_stores_rejected() {
+        let f = write_config(&config_with_stores(""));
+        let err = Config::load(f.path()).err().expect("empty stores should fail");
+        // Use {:#} to include the full cause chain; the TOML or validation error
+        // will name the missing 'stores' field somewhere in that chain.
+        let full = format!("{err:#}");
+        assert!(full.contains("stores"), "expected 'stores' in error chain: {full}");
+    }
+
+    #[test]
+    fn zero_ttl_rejected() {
+        let content = config_with_stores(ONE_STORE).replace("ttl_seconds = 300", "ttl_seconds = 0");
+        let f = write_config(&content);
+        let err = Config::load(f.path()).unwrap_err();
+        assert!(err.to_string().contains("ttl_seconds"), "{err}");
+    }
+
+    #[test]
+    fn relative_paths_resolved_against_config_dir() {
+        let content = config_with_stores(ONE_STORE)
+            .replace(
+                "recipient_file = \"/tmp/age-recipient.txt\"",
+                "recipient_file = \"age-recipient.txt\"",
+            )
+            .replace(
+                "verify_pubkey_file = \"/tmp/sign-pubkey.hex\"",
+                "verify_pubkey_file = \"sign-pubkey.hex\"",
+            );
+        let f = write_config(&content);
+        let config_dir = f.path().canonicalize().unwrap();
+        let config_dir = config_dir.parent().unwrap();
+        let cfg = Config::load(f.path()).unwrap();
+        assert_eq!(cfg.crypto.recipient_file, config_dir.join("age-recipient.txt"));
+        assert_eq!(cfg.crypto.verify_pubkey_file, config_dir.join("sign-pubkey.hex"));
+    }
+
+    #[test]
+    fn export_defaults_when_section_absent() {
+        let f = write_config(&config_with_stores(ONE_STORE));
+        let cfg = Config::load(f.path()).unwrap();
+        assert_eq!(cfg.export.rate_limit_delay_ms, 2000);
+        assert_eq!(cfg.export.max_retries, 5);
+        assert_eq!(cfg.export.prefix, "exports/");
+    }
+
+    #[test]
+    fn store_cfg_name_all_variants() {
+        assert_eq!(
+            StoreCfg::GitBranch {
+                name: "gb".into(),
+                repo_url: "u".into(),
+                branch: "b".into(),
+                token_env: "T".into(),
+            }
+            .name(),
+            "gb"
+        );
+        assert_eq!(
+            StoreCfg::S3 {
+                name: "s3".into(),
+                endpoint: "e".into(),
+                region: "r".into(),
+                bucket: "b".into(),
+                prefix: "p".into(),
+                access_key_env: "A".into(),
+                secret_key_env: "S".into(),
+            }
+            .name(),
+            "s3"
+        );
+        assert_eq!(
+            StoreCfg::GithubRelease {
+                name: "gh".into(),
+                repo: "r".into(),
+                token_env: "T".into(),
+            }
+            .name(),
+            "gh"
+        );
+    }
+}

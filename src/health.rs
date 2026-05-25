@@ -111,4 +111,54 @@ mod tests {
         assert_eq!(sanitize_run_id("local/run.42"), "local-run-42");
         assert_eq!(sanitize_run_id("a b\tc"), "a-b-c");
     }
+
+    #[test]
+    fn ok_record_fields() {
+        let started = Utc::now();
+        let r = ok("run-1".into(), started, "v42".into());
+        assert_eq!(r.status, HealthStatus::Ok);
+        assert_eq!(r.snapshot_version.as_deref(), Some("v42"));
+        assert!(r.canary_status.is_none());
+        assert!(r.canary_observed.is_none());
+        assert!(r.error.is_none());
+    }
+
+    #[test]
+    fn canary_failed_record_fields() {
+        let started = Utc::now();
+        let r = canary_failed("run-2".into(), started, 403, Some("denied".into()));
+        assert_eq!(r.status, HealthStatus::CanaryFailed);
+        assert_eq!(r.canary_status, Some(403));
+        assert_eq!(r.canary_observed.as_deref(), Some("denied"));
+        assert!(r.snapshot_version.is_none());
+        assert!(r.error.is_none());
+    }
+
+    #[test]
+    fn error_record_fields() {
+        let started = Utc::now();
+        let r = error("run-3".into(), started, "something broke".into());
+        assert_eq!(r.status, HealthStatus::Error);
+        assert_eq!(r.error.as_deref(), Some("something broke"));
+        assert!(r.snapshot_version.is_none());
+        assert!(r.canary_status.is_none());
+    }
+
+    #[test]
+    fn none_fields_omitted_from_json() {
+        let started = Utc::now();
+        let r = ok("run-4".into(), started, "v1".into());
+        let json = serde_json::to_string(&r).unwrap();
+        assert!(!json.contains("canary_status"), "absent field must not appear: {json}");
+        assert!(!json.contains("\"error\""), "absent field must not appear: {json}");
+    }
+
+    #[test]
+    fn health_status_serializes_as_snake_case() {
+        assert_eq!(
+            serde_json::to_string(&HealthStatus::CanaryFailed).unwrap(),
+            r#""canary_failed""#
+        );
+        assert_eq!(serde_json::to_string(&HealthStatus::Ok).unwrap(), r#""ok""#);
+    }
 }
