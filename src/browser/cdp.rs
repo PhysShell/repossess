@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use eyre::{Context, Result};
 use chromiumoxide::cdp::browser_protocol::network::{CookieParam, CookieSameSite, TimeSinceEpoch};
 use chromiumoxide::cdp::browser_protocol::page::AddScriptToEvaluateOnNewDocumentParams;
 use chromiumoxide::cdp::browser_protocol::storage::{
@@ -83,7 +83,7 @@ impl BrowserSession {
 
         let cfg = builder
             .build()
-            .map_err(|e| anyhow::anyhow!("browser config: {e}"))?;
+            .map_err(|e| eyre::eyre!("browser config: {e}"))?;
         let (browser, mut handler) = Browser::launch(cfg).await?;
 
         // The handler stream must be drained continuously, otherwise CDP commands stall.
@@ -224,7 +224,7 @@ impl BrowserSession {
 
         self.browser_closed = true;
         if cache.cookies.is_empty() {
-            anyhow::bail!("browser closed before any cookies were captured");
+            eyre::bail!("browser closed before any cookies were captured");
         }
         Ok(cache)
     }

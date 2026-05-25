@@ -1,6 +1,10 @@
-use anyhow::{Context, Result};
+use eyre::{eyre, Result};
 use secrecy::{ExposeSecret, SecretString};
 use std::str::FromStr;
+
+fn read_env(var: &str) -> Result<String> {
+    std::env::var(var).map_err(|_| eyre!("env var {var} is not set"))
+}
 
 pub struct AgeIdentity(SecretString);
 
@@ -8,7 +12,7 @@ impl AgeIdentity {
     /// Read identity from env, then immediately remove it from process env so any
     /// subsequently-spawned children cannot inherit it.
     pub fn take_from_env(var: &str) -> Result<Self> {
-        let raw = std::env::var(var).with_context(|| format!("env var {var} not set"))?;
+        let raw = read_env(var)?;
         std::env::remove_var(var);
         Ok(Self(SecretString::from(raw)))
     }
@@ -22,7 +26,7 @@ impl AgeIdentity {
             .find(|l| l.starts_with("AGE-SECRET-KEY-"))
             .unwrap_or_else(|| raw.trim());
         age::x25519::Identity::from_str(key_line)
-            .map_err(|e| anyhow::anyhow!("invalid age identity: {e}"))
+            .map_err(|e| eyre!("invalid age identity: {e}"))
     }
 }
 
@@ -30,7 +34,7 @@ pub struct MinisignKey(SecretString);
 
 impl MinisignKey {
     pub fn take_from_env(var: &str) -> Result<Self> {
-        let raw = std::env::var(var).with_context(|| format!("env var {var} not set"))?;
+        let raw = read_env(var)?;
         std::env::remove_var(var);
         Ok(Self(SecretString::from(raw)))
     }
@@ -47,10 +51,8 @@ pub struct StoreCredential {
 
 impl StoreCredential {
     pub fn take_from_env(access_var: &str, secret_var: &str) -> Result<Self> {
-        let ak =
-            std::env::var(access_var).with_context(|| format!("env var {access_var} not set"))?;
-        let sk =
-            std::env::var(secret_var).with_context(|| format!("env var {secret_var} not set"))?;
+        let ak = read_env(access_var)?;
+        let sk = read_env(secret_var)?;
         std::env::remove_var(access_var);
         std::env::remove_var(secret_var);
         Ok(Self {

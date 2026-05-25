@@ -1,4 +1,4 @@
-use anyhow::{bail, Context, Result};
+use eyre::{bail, eyre, Context, Result};
 use async_trait::async_trait;
 use bytes::Bytes;
 use secrecy::{ExposeSecret, SecretString};
@@ -85,7 +85,7 @@ impl GitBranchStore {
                 "--depth",
                 "1",
                 &auth_url,
-                dir.to_str().context("workdir not utf-8")?,
+                dir.to_str().ok_or_else(|| eyre!("workdir not utf-8"))?,
             ])
             .output()
             .await
@@ -173,7 +173,7 @@ impl GitBranchStore {
             return self
                 .current_sha(dir)
                 .await?
-                .ok_or_else(|| anyhow::anyhow!("no changes and no HEAD"));
+                .ok_or_else(|| eyre::eyre!("no changes and no HEAD"));
         }
         run_git(dir, &["commit", "-m", message]).await?;
         let mut push_args: Vec<String> = vec!["push".into()];
@@ -204,7 +204,7 @@ impl GitBranchStore {
         }
         self.current_sha(dir)
             .await?
-            .ok_or_else(|| anyhow::anyhow!("post-push HEAD missing"))
+            .ok_or_else(|| eyre::eyre!("post-push HEAD missing"))
     }
 
     fn safe_path(dir: &Path, key: &str) -> Result<PathBuf> {
@@ -315,7 +315,7 @@ impl SnapshotStore for GitBranchStore {
         let sha = self
             .current_sha(&dir)
             .await?
-            .ok_or_else(|| anyhow::anyhow!("git_branch get {key}: no HEAD"))?;
+            .ok_or_else(|| eyre::eyre!("git_branch get {key}: no HEAD"))?;
         Ok((Bytes::from(bytes), sha))
     }
 
@@ -370,7 +370,7 @@ impl SnapshotStore for GitBranchStore {
         let current = self
             .current_sha(&dir)
             .await?
-            .ok_or_else(|| anyhow::anyhow!("git_branch delete: no HEAD"))?;
+            .ok_or_else(|| eyre::eyre!("git_branch delete: no HEAD"))?;
         if current != etag {
             bail!("git_branch delete: etag mismatch (expected {etag}, current {current})");
         }

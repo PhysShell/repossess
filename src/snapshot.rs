@@ -1,4 +1,4 @@
-use anyhow::{ensure, Result};
+use eyre::{ensure, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};

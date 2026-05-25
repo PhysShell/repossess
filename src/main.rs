@@ -1,4 +1,4 @@
-use anyhow::Result;
+use eyre::Result;
 use clap::{Parser, Subcommand};
 use ed25519_dalek::SigningKey;
 use rand::rngs::OsRng;
@@ -38,6 +38,11 @@ enum Cmd {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Install before any other initialization so panics and early errors get
+    // the prettified report. Captures spantrace + backtrace; backtrace
+    // visibility is still gated by RUST_BACKTRACE / RUST_LIB_BACKTRACE.
+    color_eyre::install()?;
+
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()

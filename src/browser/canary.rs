@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use eyre::{Context, Result};
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue, ACCEPT};
 use serde_json::Value;
 use std::sync::Arc;

@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use eyre::{Context, Result};
 
 use crate::archive;
 use crate::config::Config;

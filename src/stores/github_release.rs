@@ -1,4 +1,4 @@
-use anyhow::{anyhow, bail, Context, Result};
+use eyre::{eyre, bail, Context, Result};
 use async_trait::async_trait;
 use bytes::Bytes;
 use secrecy::{ExposeSecret, SecretString};
@@ -49,7 +49,7 @@ impl GithubReleaseStore {
     pub fn new(name: String, repo: String, token: SecretString) -> Result<Self> {
         let (owner, repo_name) = repo
             .split_once('/')
-            .with_context(|| format!("expected owner/name, got {repo}"))?;
+            .ok_or_else(|| eyre!("expected owner/name, got {repo}"))?;
         let http = reqwest::Client::builder()
             .user_agent(USER_AGENT)
             .build()
@@ -278,13 +278,13 @@ impl SnapshotStore for GithubReleaseStore {
         let release = self
             .release_by_tag(&tag)
             .await?
-            .ok_or_else(|| anyhow!("github_release: release {tag} not found"))?;
+            .ok_or_else(|| eyre!("github_release: release {tag} not found"))?;
         let asset = self
             .list_assets(release.id)
             .await?
             .into_iter()
             .find(|a| a.name == asset_name)
-            .ok_or_else(|| anyhow!("github_release: asset {asset_name} not found in {tag}"))?;
+            .ok_or_else(|| eyre!("github_release: asset {asset_name} not found in {tag}"))?;
         let bytes = self.download_asset(asset.id).await?;
         Ok((bytes, asset.id.to_string()))
     }

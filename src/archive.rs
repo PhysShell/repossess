@@ -1,5 +1,5 @@
 use crate::browser::cdp::StorageState;
-use anyhow::{Context, Result};
+use eyre::{Context, Result};
 use bytes::Bytes;
 
 pub fn compress(state: &StorageState) -> Result<Bytes> {

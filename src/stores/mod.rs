@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use eyre::{eyre, Context, Result};
 use async_trait::async_trait;
 use bytes::Bytes;
 use secrecy::SecretString;
@@ -83,7 +83,7 @@ pub async fn build_store(cfg: &StoreCfg) -> Result<Box<dyn SnapshotStore>> {
             token_env,
         } => {
             let raw = std::env::var(token_env)
-                .with_context(|| format!("store {name}: env var {token_env} not set"))?;
+                .map_err(|_| eyre!("store {name}: env var {token_env} is not set"))?;
             std::env::remove_var(token_env);
             let store = github_release::GithubReleaseStore::new(
                 name.clone(),
@@ -99,7 +99,7 @@ pub async fn build_store(cfg: &StoreCfg) -> Result<Box<dyn SnapshotStore>> {
             token_env,
         } => {
             let raw = std::env::var(token_env)
-                .with_context(|| format!("store {name}: env var {token_env} not set"))?;
+                .map_err(|_| eyre!("store {name}: env var {token_env} is not set"))?;
             std::env::remove_var(token_env);
             let store = git_branch::GitBranchStore::new(
                 name.clone(),

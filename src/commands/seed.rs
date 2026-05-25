@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use eyre::{Context, Result};
 use bytes::Bytes;
 use chrono::Utc;
 
@@ -44,7 +44,7 @@ pub async fn run(cfg: &Config) -> Result<()> {
     session.close().await?;
 
     if state.cookies.is_empty() {
-        anyhow::bail!("no cookies captured — was the login successful?");
+        eyre::bail!("no cookies captured — was the login successful?");
     }
     tracing::info!(cookies = state.cookies.len(), "cookies captured");
 

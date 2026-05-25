@@ -274,6 +274,34 @@ Credentials (`REPOSSESS_AGE_IDENTITY`, `REPOSSESS_SIGN_SECRET`, plus per-store
 scrubbed from the process environment immediately on read so child
 processes (Chromium) cannot inherit them.
 
+### Env vars in `config.toml`: two conventions
+
+There are exactly two ways a value in `config.toml` interacts with the
+environment, and they are not interchangeable:
+
+1. **Fields with the `_env` suffix** (`access_key_env`, `secret_key_env`,
+   `token_env`) — the field's value is **the name of an environment
+   variable**, and the program reads the actual secret from that variable
+   at startup. Used for credentials so they never appear in `config.toml`.
+
+   ```toml
+   access_key_env = "REPOSSESS_R2_ACCESS_KEY"   # name of env var
+   ```
+
+2. **Every other field** (`endpoint`, `region`, `bucket`, `prefix`,
+   `repo`, `repo_url`, `login_url`, …) — taken **as a literal string**.
+   These are not secrets and live in `config.toml` directly.
+
+   ```toml
+   endpoint = "https://abc123.r2.cloudflarestorage.com"   # literal
+   ```
+
+There is **no `${VAR}` substitution anywhere** in `config.toml`. Writing
+`endpoint = "${REPOSSESS_R2_ENDPOINT}"` does not expand — the literal string
+`${REPOSSESS_R2_ENDPOINT}` is passed to the S3 client, which then fails
+with `was not a valid URI`. Either put the real value in the file, or, if
+you need it externalised, add a new `_env` field for that knob.
+
 See `config.example.toml` for a fully populated reference.
 
 ---

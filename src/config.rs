@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use eyre::{Context, Result};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -127,11 +127,11 @@ impl Config {
     /// pipeline (`stores[0]` panicking on empty list, zero-TTL locks expiring
     /// immediately, etc.) as a single descriptive error at startup.
     fn validate(&self) -> Result<()> {
-        anyhow::ensure!(
+        eyre::ensure!(
             !self.stores.is_empty(),
             "config: stores must contain at least one entry (the primary)"
         );
-        anyhow::ensure!(
+        eyre::ensure!(
             self.lock.ttl_seconds > 0,
             "config: lock.ttl_seconds must be > 0 (lock with TTL=0 expires immediately and provides no mutual exclusion)"
         );

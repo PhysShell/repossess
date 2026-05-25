@@ -1,4 +1,4 @@
-use anyhow::{bail, Context, Result};
+use eyre::{bail, Context, Result};
 use chrono::{DateTime, TimeZone, Utc};
 use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Deserializer, Serialize};
@@ -149,7 +149,7 @@ impl ChatGptClient {
             .access_token
             .filter(|t| !t.is_empty())
             .ok_or_else(|| {
-                anyhow::anyhow!(
+                eyre::eyre!(
                     "no accessToken in session response — session may be invalid or expired; \
                      re-run `repossess seed`"
                 )

@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use eyre::{Context, Result};
 use bytes::Bytes;
 use std::time::Duration;
 

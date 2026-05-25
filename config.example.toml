@@ -1,11 +1,20 @@
 # Copy to config.toml and fill in. Never commit config.toml.
+#
+# Env-var conventions (see README "Env vars in config.toml" for the long form):
+#   - Fields ending in `_env` (access_key_env, secret_key_env, token_env)
+#     hold the NAME of an env var. The program reads the actual secret
+#     from that variable at startup. Used for credentials only.
+#   - All other fields (endpoint, region, bucket, prefix, repo, ...) are
+#     LITERAL strings. They go into config.toml as-is.
+#   - `${VAR}` syntax is NOT expanded anywhere. If you need a non-secret
+#     value externalised, the field needs a dedicated `_env` variant.
+#
 # TODO: direnv or regular env at least:
 #export REPOSSESS_AGE_IDENTITY=$(cat .secrets/age-key.txt)
 #export REPOSSESS_SIGN_SECRET=$(cat .secrets/sign-secret.hex)
 #export REPOSSESS_R2_ACCESS_KEY=<your key>
 #export REPOSSESS_R2_SECRET_KEY=<your secret>
-#export REPOSSESS_R2_ENDPOINT=<https://...r2.cloudflarestorage.com>
-#export REPOSSESS_R2_BUCKET=<bucket name>
+# Note: endpoint and bucket below are literals — not env vars.
 
 
 [browser]

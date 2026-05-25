@@ -1,5 +1,5 @@
 use super::{ObjectMeta, PutResult, SnapshotStore};
-use anyhow::{Context, Result};
+use eyre::{Context, Result};
 use async_trait::async_trait;
 use aws_config::BehaviorVersion;
 use aws_credential_types::Credentials;
@@ -38,8 +38,8 @@ impl S3Store {
         );
 
         let cfg = aws_config::defaults(BehaviorVersion::latest())
-            .endpoint_url(endpoint)
-            .region(Region::new(region))
+            .endpoint_url(&endpoint)
+            .region(Region::new(region.clone()))
             .credentials_provider(aws_creds)
             .load()
             .await;
@@ -155,7 +155,7 @@ impl SnapshotStore for S3Store {
             Ok(out) => Ok(Some(out.e_tag().unwrap_or_default().to_string())),
             Err(e) => match e.into_service_error() {
                 aws_sdk_s3::operation::head_object::HeadObjectError::NotFound(_) => Ok(None),
-                other => Err(anyhow::anyhow!(
+                other => Err(eyre::eyre!(
                     "s3 head failed (store={}, endpoint={}, region={}, bucket={}, key={}): {other:?}",
                     self.name,
                     self.endpoint,

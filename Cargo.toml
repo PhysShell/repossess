@@ -1,11 +1,12 @@
 [package]
 name = "repossess"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 publish = false
 
 [dependencies]
-anyhow = "1"
+eyre = "0.6"
+color-eyre = "0.6"
 clap = { version = "4.5", features = ["derive", "env"] }
 async-trait = "0.1"
 futures = "0.3"

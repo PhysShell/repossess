@@ -1,6 +1,6 @@
 use crate::snapshot::LOCK_KEY;
 use crate::stores::SnapshotStore;
-use anyhow::{bail, Result};
+use eyre::{bail, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
