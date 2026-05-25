@@ -7,3 +7,12 @@
 *.age
 /.secrets/
 /.state-work/
+/archive/
+
+# Test fixtures for the ChatGPT workload contain real conversation content
+# (titles, messages, model metadata) pulled from a personal account. Don't
+# commit them — they're not redacted, and committing would leak private chats
+# into git history. Drop files locally into tests/fixtures/chatgpt/ to run the
+# archive↔API parity test; the test is marked #[ignore] so CI stays green
+# when the files aren't present.
+/tests/fixtures/

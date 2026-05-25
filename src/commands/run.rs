@@ -16,6 +16,7 @@ use crate::snapshot::{
     ensure_monotonic, sha256_hex, verify_digest, LatestPointer, SnapshotFormat, LATEST_KEY,
 };
 use crate::stores::{self, SnapshotStore};
+use crate::workload::{self, WorkloadCtx};
 
 enum Outcome {
     Saved { version: String },
@@ -135,10 +136,31 @@ async fn run_locked(
     }
     tracing::info!("canary ok");
 
-    // Workload extension point: this is where the actual job runs.
-    // Kept empty so the repossess lifecycle (restore/save) can be exercised
-    // independently of any specific automation; fill in here.
-    tracing::info!("workload placeholder");
+    // Workload extension point: each configured workload runs against the
+    // restored session. Workloads can read/write the primary store and fan
+    // out to mirrors via the shared WorkloadCtx; a workload failure aborts
+    // the run *before* we save the new session snapshot, so failures don't
+    // get baked into the next day's starting state.
+    if cfg.workloads.is_empty() {
+        tracing::info!("no workloads configured");
+    } else {
+        for workload_cfg in &cfg.workloads {
+            let workload = workload::build_workload(workload_cfg)?;
+            let ctx = WorkloadCtx {
+                http: &http,
+                primary,
+                mirrors,
+                recipient,
+                identity,
+            };
+            tracing::info!(name = workload.name(), "workload start");
+            workload
+                .run(&ctx)
+                .await
+                .with_context(|| format!("workload {}", workload.name()))?;
+            tracing::info!(name = workload.name(), "workload done");
+        }
+    }
 
     let new_state = session.export_storage_state().await?;
     session.close().await?;

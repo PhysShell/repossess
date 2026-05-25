@@ -275,8 +275,7 @@ fn walk_to_current<'a>(
 ) -> Vec<&'a MappingNode> {
     let mut path = Vec::new();
     let mut id = current;
-    loop {
-        let Some(node) = mapping.get(id) else { break };
+    while let Some(node) = mapping.get(id) {
         path.push(node);
         match &node.parent {
             Some(p) => id = p.as_str(),

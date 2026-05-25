@@ -30,6 +30,29 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
     hex::encode(digest)
 }
 
+/// Verify a freshly-fetched snapshot matches the pointer's recorded digest.
+pub fn verify_digest(expected_hex: &str, actual_bytes: &[u8]) -> Result<()> {
+    let actual = sha256_hex(actual_bytes);
+    ensure!(
+        actual == expected_hex,
+        "snapshot digest mismatch: expected {expected_hex}, got {actual}"
+    );
+    Ok(())
+}
+
+/// Reject pointer rollback: a new pointer must be strictly newer than the previous.
+pub fn ensure_monotonic(prev: Option<&LatestPointer>, next: &LatestPointer) -> Result<()> {
+    if let Some(p) = prev {
+        ensure!(
+            next.created_at > p.created_at,
+            "pointer rollback detected: prev created_at = {}, next created_at = {}",
+            p.created_at,
+            next.created_at
+        );
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -90,27 +113,4 @@ mod tests {
         let err = ensure_monotonic(Some(&make_pointer(t1)), &make_pointer(t2)).unwrap_err();
         assert!(err.to_string().contains("rollback"), "{err}");
     }
-}
-
-/// Verify a freshly-fetched snapshot matches the pointer's recorded digest.
-pub fn verify_digest(expected_hex: &str, actual_bytes: &[u8]) -> Result<()> {
-    let actual = sha256_hex(actual_bytes);
-    ensure!(
-        actual == expected_hex,
-        "snapshot digest mismatch: expected {expected_hex}, got {actual}"
-    );
-    Ok(())
-}
-
-/// Reject pointer rollback: a new pointer must be strictly newer than the previous.
-pub fn ensure_monotonic(prev: Option<&LatestPointer>, next: &LatestPointer) -> Result<()> {
-    if let Some(p) = prev {
-        ensure!(
-            next.created_at > p.created_at,
-            "pointer rollback detected: prev created_at = {}, next created_at = {}",
-            p.created_at,
-            next.created_at
-        );
-    }
-    Ok(())
 }

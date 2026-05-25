@@ -451,3 +451,130 @@ Smoke tests:
 - Not production-tested. The mechanism is real, the threat-model is
   thought through, the cryptographic primitives are well-chosen — but
   this is a research project, not battle-tested infrastructure.
+
+---
+
+## Workloads: ChatGPT chats
+
+The session lifecycle (restore → canary → save) is decoupled from what the
+daily run actually *does*. That work lives in **workloads** — config-driven
+jobs that get a `WorkloadCtx` (the cookie-bearing HTTP client, the primary
+store, mirrors, age recipient + identity) and write whatever they want into
+their own key prefix on the same stores.
+
+The first such workload is `chatgpt_chats`: a daily incremental sync of
+your ChatGPT conversations.
+
+### Storage layout
+
+Under the configured prefix (default `chatgpt/`):
+
+```
+chatgpt/index.json.age              -- encrypted JSON index, CAS-updated
+chatgpt/conv/<conversation_id>.json.zst.age   -- per-conversation body
+```
+
+The index records `{update_time, title, object_key, sha256, bytes,
+stored_at}` for every conversation we know about. The list endpoint reports
+`update_time` cheaply, so a daily run only fetches the bodies whose
+timestamps changed. Per-conversation files are overwritten in place — we
+keep the latest revision, not a history (a full account is ≈150 MB at rest,
+well under any free tier).
+
+### Configuration
+
+Add a `[[workloads]]` block to `config.toml`:
+
+```toml
+[[workloads]]
+kind = "chatgpt_chats"
+name = "chats"
+prefix = "chatgpt/"
+
+# URLs (override if ChatGPT moves the API).
+# base_url = "https://chatgpt.com"
+# session_path = "/api/auth/session"
+# list_path = "/backend-api/conversations"
+# detail_path_template = "/backend-api/conversation/{id}"
+
+# Pagination. `incremental_stop_after_known` is the early-stop: after this
+# many consecutive list items already match our index, we assume we've
+# caught up and stop paginating.
+# list_page_limit = 28
+# incremental_stop_after_known = 50
+
+# Rate limits — trial & error deduced defaults track the JS exporter's `rate_limit.js` so the two
+# share a tuning intuition. For incremental runs (few new chats) the batch
+# cooldown and retry sweep rarely fire.
+# list_delay_ms = 1200
+# detail_delay_ms = 4000
+# detail_batch_size = 75
+# detail_batch_cooldown_ms = 45000
+# retry_sweep_cooldown_ms = 600000
+# max_backoff_ms = 900000
+# max_retries = 5
+
+# zstd compression level for conversation bodies. 19 is the boundary above
+# which long-distance matching kicks in by default; small JSON chats don't
+# benefit much from going higher.
+# zstd_level = 19
+```
+
+With this in place, `repossess run` will execute the workload after the
+canary passes and before the new session snapshot is saved. A workload
+failure aborts the run *before* the snapshot is written, so failures don't
+get baked into the next day's starting state.
+
+### Bootstrap from the official export
+
+If you already have a ChatGPT data export, seed the index from it instead
+of crawling the API for 2000+ conversations on day one:
+
+```sh
+repossess import-chatgpt --from /path/to/unpacked/export
+# or, to count without writing:
+repossess import-chatgpt --from /path/to/unpacked/export --dry-run
+```
+
+The command looks for `conversations*.json` batches in the directory,
+encodes each conversation with the same path the workload uses, and writes
+a single CAS-protected index at the end. Re-running is idempotent:
+conversations whose `update_time` already matches the index are skipped.
+
+### 401 and rate-limit handling
+
+The API client transparently refreshes its access token on a single 401
+mid-run (via `/api/auth/session`) and retries the request. A second 401
+fails the workload — at that point the session itself has expired and you
+need to re-`seed`. HTTP 429 and 5xx responses back off exponentially up to
+`max_backoff_ms`, honoring `Retry-After` when present. Conversations that
+fail mid-batch are re-tried once in a final sweep after
+`retry_sweep_cooldown_ms`; anything still failing is left for the next
+daily run.
+
+### Archive↔API parity test
+
+The biggest correctness concern is: if our DAG walk or markdown rendering
+diverges between the official export format and the live API response for
+the same chat, we silently lose half a conversation on every run. The
+`tests/chatgpt_parity.rs` test guards against that — it parses both shapes,
+compares node-id sets, walks each from `current_node`, and asserts the
+same `(role, normalized_text)` sequence and markdown output.
+
+The test is marked `#[ignore]` because fixtures are not committed (they
+contain real chat content). To run it, drop two files into
+`tests/fixtures/chatgpt/` for the same conversation:
+
+```
+tests/fixtures/chatgpt/archive_sample.json   -- from an official export
+tests/fixtures/chatgpt/api_sample.json       -- from the API detail endpoint
+```
+
+Then:
+
+```sh
+cargo test --test chatgpt_parity -- --ignored --nocapture
+```
+
+The fixtures directory is `.gitignore`'d so the files never get committed
+by accident.

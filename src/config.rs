@@ -13,6 +13,8 @@ pub struct Config {
     pub stores: Vec<StoreCfg>,
     #[serde(default)]
     pub export: ExportCfg,
+    #[serde(default)]
+    pub workloads: Vec<WorkloadCfg>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -190,6 +192,96 @@ fn default_rate_limit_delay_ms() -> u64 { 2000 }
 fn default_max_retries() -> u32 { 5 }
 fn default_export_prefix() -> String { "exports/".into() }
 
+// ── Workloads ────────────────────────────────────────────────────────────────
+//
+// Workloads are the actual jobs the daily `run` performs once the session has
+// been restored and the canary has passed. Each one is config-driven and gets
+// a shared `WorkloadCtx` (http client w/ cookies, stores, age keys).
+
+#[derive(Debug, Deserialize, Clone)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum WorkloadCfg {
+    /// Daily incremental sync of ChatGPT conversations.
+    ChatgptChats(ChatgptChatsCfg),
+}
+
+impl WorkloadCfg {
+    pub fn name(&self) -> &str {
+        match self {
+            WorkloadCfg::ChatgptChats(c) => &c.name,
+        }
+    }
+}
+
+/// All knobs for the ChatGPT chats workload live here so URLs, rate limits
+/// and storage layout can change without a rebuild. Defaults track the values
+/// from the JS exporter's `rate_limit.js` — tuned to walk ~2000 conversations
+/// without tripping the API's per-IP throttles.
+#[derive(Debug, Deserialize, Clone)]
+pub struct ChatgptChatsCfg {
+    pub name: String,
+    /// Object-store key prefix. Index → `{prefix}index.json.age`,
+    /// conversations → `{prefix}conv/<id>.json.zst.age`.
+    #[serde(default = "default_chats_prefix")]
+    pub prefix: String,
+
+    // URLs.
+    #[serde(default = "default_chatgpt_base_url")]
+    pub base_url: String,
+    #[serde(default = "default_session_path")]
+    pub session_path: String,
+    #[serde(default = "default_list_path")]
+    pub list_path: String,
+    #[serde(default = "default_detail_path_template")]
+    pub detail_path_template: String,
+
+    // Pagination.
+    #[serde(default = "default_list_page_limit")]
+    pub list_page_limit: u32,
+    /// Stop list pagination after seeing this many consecutive items that
+    /// already match our index (same id + same update_time). Cheap incremental
+    /// resume — we don't paginate to the end every day.
+    #[serde(default = "default_incremental_stop_after_known")]
+    pub incremental_stop_after_known: u32,
+
+    // Rate limits — names mirror rate_limit.js so the JS exporter and this
+    // workload can share a tuning intuition.
+    #[serde(default = "default_list_delay_ms")]
+    pub list_delay_ms: u64,
+    #[serde(default = "default_detail_delay_ms")]
+    pub detail_delay_ms: u64,
+    #[serde(default = "default_detail_batch_size")]
+    pub detail_batch_size: u32,
+    #[serde(default = "default_detail_batch_cooldown_ms")]
+    pub detail_batch_cooldown_ms: u64,
+    #[serde(default = "default_retry_sweep_cooldown_ms")]
+    pub retry_sweep_cooldown_ms: u64,
+    #[serde(default = "default_max_backoff_ms")]
+    pub max_backoff_ms: u64,
+    #[serde(default = "default_max_retries")]
+    pub max_retries: u32,
+
+    /// zstd compression level for per-conversation bodies. Defaults to 19
+    /// (boundary above which long-distance matching kicks in by default) —
+    /// good ratio for small JSON bodies without burning excessive CPU.
+    #[serde(default = "default_zstd_level")]
+    pub zstd_level: i32,
+}
+
+fn default_chats_prefix() -> String { "chatgpt/".into() }
+fn default_session_path() -> String { "/api/auth/session".into() }
+fn default_list_path() -> String { "/backend-api/conversations".into() }
+fn default_detail_path_template() -> String { "/backend-api/conversation/{id}".into() }
+fn default_list_page_limit() -> u32 { 28 }
+fn default_incremental_stop_after_known() -> u32 { 50 }
+fn default_list_delay_ms() -> u64 { 1200 }
+fn default_detail_delay_ms() -> u64 { 4000 }
+fn default_detail_batch_size() -> u32 { 75 }
+fn default_detail_batch_cooldown_ms() -> u64 { 45_000 }
+fn default_retry_sweep_cooldown_ms() -> u64 { 600_000 }
+fn default_max_backoff_ms() -> u64 { 900_000 }
+fn default_zstd_level() -> i32 { 19 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -274,7 +366,7 @@ token_env = "GH_MIRROR_TOKEN"
     #[test]
     fn empty_stores_rejected() {
         let f = write_config(&config_with_stores(""));
-        let err = Config::load(f.path()).err().expect("empty stores should fail");
+        let err = Config::load(f.path()).expect_err("empty stores should fail");
         // Use {:#} to include the full cause chain; the TOML or validation error
         // will name the missing 'stores' field somewhere in that chain.
         let full = format!("{err:#}");

@@ -87,3 +87,5 @@ token_env = "GITHUB_TOKEN"
 # repo_url = "https://github.com/owner/agent-state.git"
 # branch = "agent-state"
 # token_env = "GITHUB_TOKEN"
+
+# For workloads see README.md

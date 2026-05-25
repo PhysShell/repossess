@@ -34,6 +34,15 @@ enum Cmd {
     Verify,
     /// Export one ChatGPT conversation via the backend API (test mode).
     Export,
+    /// Bootstrap the chatgpt_chats workload from an official ChatGPT data export.
+    ImportChatgpt {
+        /// Directory containing `conversations-NNN.json` batches.
+        #[arg(long)]
+        from: PathBuf,
+        /// Parse + classify but don't write anything to the store.
+        #[arg(long, default_value_t = false)]
+        dry_run: bool,
+    },
 }
 
 #[tokio::main]
@@ -59,6 +68,10 @@ async fn main() -> Result<()> {
         Cmd::Run => repossess::commands::run::run(&Config::load(&cli.config)?).await,
         Cmd::Verify => repossess::commands::verify::run(&Config::load(&cli.config)?).await,
         Cmd::Export => repossess::commands::export::run(&Config::load(&cli.config)?).await,
+        Cmd::ImportChatgpt { from, dry_run } => {
+            repossess::commands::import_chatgpt::run(&Config::load(&cli.config)?, &from, dry_run)
+                .await
+        }
     }
 }
 
