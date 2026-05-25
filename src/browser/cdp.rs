@@ -1,7 +1,5 @@
 use anyhow::{Context, Result};
-use chromiumoxide::cdp::browser_protocol::network::{
-    CookieParam, CookieSameSite, TimeSinceEpoch,
-};
+use chromiumoxide::cdp::browser_protocol::network::{CookieParam, CookieSameSite, TimeSinceEpoch};
 use chromiumoxide::cdp::browser_protocol::page::AddScriptToEvaluateOnNewDocumentParams;
 use chromiumoxide::cdp::browser_protocol::storage::{
     ClearCookiesParams, GetCookiesParams, SetCookiesParams,
@@ -10,6 +8,7 @@ use chromiumoxide::{Browser, BrowserConfig, Page};
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 use tokio::task::JoinHandle;
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
@@ -145,10 +144,37 @@ impl BrowserSession {
 
         let mut cache = self.export_storage_state().await.unwrap_or_default();
         tracing::debug!(cookies = cache.cookies.len(), "initial cookie cache");
+        let mut idle_ticks: u32 = 0;
+        let mut tick = tokio::time::interval(Duration::from_millis(400));
+        tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
         loop {
             tokio::select! {
+                _ = tick.tick() => {
+                    idle_ticks = idle_ticks.saturating_add(1);
+                    match self.browser.execute(GetTargetsParams::default()).await {
+                        Ok(resp) => {
+                            let pages = resp.result.target_infos.iter()
+                                .filter(|t| t.r#type == "page").count();
+                            tracing::debug!(remaining_pages = pages, idle_ticks, "periodic target poll");
+                            if pages == 0 {
+                                self.browser_closed = true;
+                                if let Ok(state) = self.export_storage_state().await {
+                                    if !state.cookies.is_empty() {
+                                        return Ok(state);
+                                    }
+                                }
+                                break;
+                            }
+                        }
+                        Err(e) => {
+                            tracing::debug!(error = %e, "Target.getTargets failed during periodic poll; assuming browser closed");
+                            break;
+                        }
+                    }
+                }
                 d = destroyed.next() => {
+                    idle_ticks = 0;
                     match d {
                         None => {
                             tracing::debug!("destroyed stream ended");
@@ -177,6 +203,7 @@ impl BrowserSession {
                     }
                 }
                 c = changed.next() => {
+                    idle_ticks = 0;
                     match c {
                         None => {
                             tracing::debug!("changed stream ended");
